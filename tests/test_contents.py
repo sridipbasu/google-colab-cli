@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import base64
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -121,6 +122,38 @@ def test_download_file(mock_request, client, tmp_path):
     )
 
     assert local_file.read_bytes() == content_bytes
+
+
+@patch("colab_cli.contents.requests.request")
+def test_download_notebook_writes_valid_json(mock_request, client, tmp_path):
+    """`format: json` models (notebooks) must be serialized as JSON.
+
+    The Contents API returns notebooks with a decoded object in `content`,
+    not a string; writing `str(content)` produced Python's repr() and an
+    unparseable `.ipynb`.
+    """
+    mock_resp = MagicMock(spec=Response)
+    mock_resp.status_code = 200
+
+    notebook = {
+        "cells": [],
+        "metadata": {},
+        "nbformat": 4,
+        "nbformat_minor": 5,
+    }
+    mock_resp.json.return_value = {
+        "name": "test.ipynb",
+        "type": "notebook",
+        "format": "json",
+        "content": notebook,
+    }
+    mock_request.return_value = mock_resp
+
+    local_file = tmp_path / "test.ipynb"
+    client.download("content/test.ipynb", str(local_file))
+
+    with open(local_file, "r", encoding="utf-8") as f:
+        assert json.load(f) == notebook
 
 
 @patch("colab_cli.contents.requests.request")
